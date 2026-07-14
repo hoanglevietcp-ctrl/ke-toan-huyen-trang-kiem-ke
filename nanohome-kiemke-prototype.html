@@ -6,6 +6,7 @@
 <title>Kế toán Huyền Trang – Kiểm kê kho</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
   --black:#0f0f10; --accent:#111214; --bg:#f1f1f2; --card:#ffffff;
@@ -413,6 +414,10 @@ let SESSIONS=[];
 /* ================= STATE ================= */
 let currentUser=null, session=null, camOn=false, camStarting=false, scanner=null, modalProd=null, pendingMisa=null, viewSession=null, torchOn=false;
 let lastDecode={code:null,at:0},lastProdCode=null;
+const CLOUD_URL='https://zrqqufeppkulxhcuanpm.supabase.co';
+const CLOUD_KEY='sb_publishable_2B5qGzBGU-hhzeCMbbzTLQ_aignON93';
+const cloud=window.supabase.createClient(CLOUD_URL,CLOUD_KEY);
+let cloudOnline=false,cloudSubscribed=false;
 
 /* ================= HELPERS ================= */
 const $=id=>document.getElementById(id);
@@ -427,6 +432,45 @@ function uName(id){return USERS.find(u=>u.id===id).name;}
 function initials(n){return n.split(' ').map(x=>x[0]).join('').slice(-2).toUpperCase();}
 function fmtT(ms){return new Date(ms).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'});}
 function setHdr(t,s){$('hdrTitle').innerHTML=t;$('hdrSub').textContent=s||'';}
+function cloudPayload(s){return {...s,counts:{},log:[]};}
+function applyCloudEvents(target,events){
+  target.counts={};target.log=[];
+  events.filter(e=>e.session_id===target.id).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).forEach(e=>{
+    if(!target.counts[e.product_code])target.counts[e.product_code]={total:0,byUser:{}};
+    const c=target.counts[e.product_code];
+    c.total+=e.delta;c.byUser[e.user_id]=(c.byUser[e.user_id]||0)+e.delta;c.lastAt=new Date(e.created_at).getTime();
+    target.log.push({code:e.product_code,delta:e.delta,type:e.action,uid:e.user_id,at:new Date(e.created_at)});
+  });
+}
+async function refreshCloudSessions(){
+  const {data:rows,error}=await cloud.from('inventory_sessions').select('id,payload,created_at').order('created_at');
+  if(error){console.warn('Cloud chưa sẵn sàng',error.message);return false;}
+  const ids=rows.map(r=>r.id);
+  const {data:events,error:eventError}=ids.length?await cloud.from('inventory_events').select('*').in('session_id',ids):{data:[],error:null};
+  if(eventError){console.warn('Không đọc được lượt quét',eventError.message);return false;}
+  const next=rows.map(r=>({...r.payload,id:r.id}));next.forEach(s=>applyCloudEvents(s,events));
+  SESSIONS=next;cloudOnline=true;
+  if(session){
+    const fresh=SESSIONS.find(s=>s.id===session.id);
+    if(fresh){session=fresh;if($('scr-count').classList.contains('active'))renderCount();}
+  }
+  return true;
+}
+function subscribeCloud(){
+  if(cloudSubscribed)return;cloudSubscribed=true;
+  cloud.channel('kiem-ke-dong-bo')
+    .on('postgres_changes',{event:'*',schema:'public',table:'inventory_sessions'},()=>refreshCloudSessions())
+    .on('postgres_changes',{event:'*',schema:'public',table:'inventory_events'},()=>refreshCloudSessions())
+    .subscribe();
+}
+async function cloudSaveSession(s){
+  const {error}=await cloud.from('inventory_sessions').upsert({id:s.id,payload:cloudPayload(s)},{onConflict:'id'});
+  if(error)toast('Chưa lưu được phiên chung: '+error.message);else{cloudOnline=true;subscribeCloud();}
+}
+async function cloudRecordDelta(code,delta,action){
+  const {error}=await cloud.from('inventory_events').insert({session_id:session.id,product_code:code,user_id:currentUser.id,delta,action});
+  if(error)toast('Chưa đồng bộ lượt quét: '+error.message);
+}
 function goBack(){
   if($('scr-detail').classList.contains('active')&&session){enterCountView();return;}
   goHome();
@@ -453,6 +497,10 @@ function logout(){stopCam();currentUser=null;session=null;$('hdrUser').innerHTML
 function goHome(){
   stopCam();session=null;show('scr-home');
   setHdr('Kiểm Kê Kho',currentUser.title);
+  renderHome();
+  refreshCloudSessions().then(ok=>{if(ok&&currentUser&&!session){subscribeCloud();renderHome();}});
+}
+function renderHome(){
   $('btnNew').style.display=canLead(currentUser)?'block':'none';
   const act=$('activeList');act.innerHTML='';
   const actives=SESSIONS.filter(s=>s.status==='active');
@@ -514,7 +562,7 @@ function createSession(){
   const team=[currentUser.id,...[...document.querySelectorAll('#assistChips .chip.on')].map(c=>c.dataset.uid)];
   const s={id:'S'+Date.now(),date:$('cDate').value,time:$('cTime').value,whId:$('cWh').value,
     team,leader:currentUser.id,misa:pendingMisa,counts:{},done:{},status:'active',log:[]};
-  SESSIONS.push(s);toast('Đã tạo đợt kiểm kê');joinSession(s);
+  SESSIONS.push(s);cloudSaveSession(s);toast('Đã tạo đợt kiểm kê');joinSession(s);
 }
 
 /* ================= COUNT ================= */
@@ -614,6 +662,7 @@ function addCount(code,qty){
   const c=session.counts[p.code];
   c.total+=qty;c.byUser[currentUser.id]=(c.byUser[currentUser.id]||0)+qty;c.lastAt=Date.now();
   logAdj(p.code,qty,'đếm');
+  cloudRecordDelta(p.code,qty,'đếm');
   lastProdCode=p.code;
   renderCount();
   if($('scr-detail').classList.contains('active'))renderDetail();
@@ -633,6 +682,7 @@ function quickAdj(d){
   if(!c||c.total<=0){toast('Không thể giảm thêm');return;}
   c.total-=1;c.byUser[currentUser.id]=(c.byUser[currentUser.id]||0)-1;c.lastAt=Date.now();
   logAdj(lastProdCode,-1,'trừ nhanh');
+  cloudRecordDelta(lastProdCode,-1,'trừ nhanh');
   renderCount();toast('−1 · '+lastProdCode);
   if(navigator.vibrate)navigator.vibrate(30);
 }
@@ -763,6 +813,7 @@ function saveModalCount(dir){
   if(q>cur){toast('Chỉ có thể trừ tối đa '+cur);return;}
   c.total-=q;c.byUser[currentUser.id]=(c.byUser[currentUser.id]||0)-q;c.lastAt=Date.now();
   logAdj(modalProd.code,-q,'trừ bớt');
+  cloudRecordDelta(modalProd.code,-q,'trừ bớt');
   renderCount();if($('scr-detail').classList.contains('active'))renderDetail();
   refreshModalStats();$('mQty').value=1;toast('−'+q+' · '+modalProd.code);
 }
@@ -777,6 +828,7 @@ function setExactTotal(){
   if(!confirm('Đặt tổng '+modalProd.code+' từ '+c.total+' → '+v+' ?'))return;
   c.total=v;c.byUser[currentUser.id]=(c.byUser[currentUser.id]||0)+delta;c.lastAt=Date.now();
   logAdj(modalProd.code,delta,'leader đặt tổng');
+  cloudRecordDelta(modalProd.code,delta,'leader đặt tổng');
   renderCount();if($('scr-detail').classList.contains('active'))renderDetail();
   refreshModalStats();$('mSetTotal').value='';toast('Đã đặt tổng = '+v);
 }
@@ -785,14 +837,14 @@ function setExactTotal(){
 function markDone(){
   if(session.done[currentUser.id]){
     if(!confirm('Tiếp tục kiểm kê? Trạng thái HOÀN THÀNH của bạn sẽ được gỡ.'))return;
-    delete session.done[currentUser.id];renderCount();startCam();toast('Đã mở lại – tiếp tục quét');return;
+    delete session.done[currentUser.id];cloudSaveSession(session);renderCount();startCam();toast('Đã mở lại – tiếp tục quét');return;
   }
   const missing=PRODUCTS.filter(p=>!session.counts[p.code]).length;
   const msg=missing
     ?('Còn '+missing+' mã CHƯA ĐƯỢC ĐẾM (xem "Xem tất cả › Chưa đếm").\n\nVẫn xác nhận hoàn thành phần của bạn?')
     :'Xác nhận bạn đã kiểm xong phần của mình?';
   if(!confirm(msg))return;
-  session.done[currentUser.id]=true;stopCam();
+  session.done[currentUser.id]=true;cloudSaveSession(session);stopCam();
   camMsg('Bạn đã hoàn thành.<br>Bấm "Tiếp tục kiểm" nếu muốn quét thêm.');
   renderCount();
 }
@@ -812,7 +864,7 @@ function finishAll(){
   msg+='Xác nhận kết thúc đợt kiểm kho?';
   if(!confirm(msg))return;
   if(!confirm('XÁC NHẬN LẦN CUỐI: Sau khi kết thúc, đợt kiểm kê sẽ KHÓA – không ai chỉnh sửa hay đếm thêm được nữa.'))return;
-  session.status='finished';stopCam();viewSession=session;session=null;reportScreen();
+  session.status='finished';cloudSaveSession(session);stopCam();viewSession=session;session=null;reportScreen();
 }
 
 /* ===== REPORT / EXCEL ===== */
