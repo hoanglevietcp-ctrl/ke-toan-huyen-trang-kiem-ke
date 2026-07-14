@@ -1,0 +1,8 @@
+{
+  "name": "nanohome-kiemke-prototype",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "./scripts/dev-phone.sh"
+  }
+}

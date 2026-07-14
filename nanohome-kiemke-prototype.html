@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Kế toán Huyền Trang – Kiểm kê kho</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --black:#0f0f10; --accent:#111214; --bg:#f1f1f2; --card:#ffffff;
+  --text:#111214; --muted:#9a9ba0; --border:#ececed;
+  --ok:#6b6c72; --okbg:#f1f1f2; --bad:#b23b32; --badbg:#f6ecea; --blue:#111214;
+  --shadow-sm:0 1px 2px rgba(16,17,20,.05);
+  --shadow-md:0 1px 2px rgba(16,17,20,.05),0 8px 20px rgba(16,17,20,.05);
+  --shadow-up:0 -6px 20px rgba(16,17,20,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,'Inter','Segoe UI',Roboto,sans-serif}
+body{background:var(--bg);color:var(--text);max-width:480px;margin:0 auto;min-height:100vh;-webkit-font-smoothing:antialiased}
+/* số canh cột thẳng hàng (ledger / tabular) cho toàn app số liệu */
+.stepper .num,.pstats .n,.stats .n,.stat3 .n,.ritem .num .a,.mem .ct,.pcol .n,td.r,th.r,#pMisa,#pCounted,#pTotal{font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1,'ss01' 1}
+.screen{display:none;padding:16px;padding-bottom:110px}
+.screen.active{display:block}
+.demo-banner{background:#0f0f10;color:#c9c9cc;font-size:10px;text-align:center;padding:5px;font-weight:600;letter-spacing:.6px}
+/* ---------- header ---------- */
+header.app{background:rgba(15,15,16,.92);backdrop-filter:saturate(180%) blur(12px);-webkit-backdrop-filter:saturate(180%) blur(12px);color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:30}
+.logo{display:flex;align-items:center;gap:8px;cursor:pointer}
+.logo .cube{width:30px;height:30px;border:2px solid #fff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px}
+.logo .txt{font-size:12px;font-weight:800;letter-spacing:3px;line-height:1.15}
+.hcenter{text-align:left;flex:1;min-width:0}
+.hcenter .t{font-size:15px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hcenter .t .dot{color:#dcdce0;animation:pulse 1.8s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+.hcenter .s{font-size:10px;color:#9c9c96;margin-top:1px}
+.hright{font-size:11px;text-align:right;flex-shrink:0}
+.hright .out{opacity:.8;text-decoration:underline;cursor:pointer}
+.back{color:#fff;font-size:24px;margin-right:8px;cursor:pointer;display:none;line-height:1}
+/* ---------- base components ---------- */
+.btn{display:block;width:100%;padding:13px;border:none;border-radius:13px;background:var(--accent);color:#fff;font-size:14px;font-weight:650;letter-spacing:.2px;text-transform:none;cursor:pointer;margin-top:10px;transition:transform .08s ease,opacity .15s ease}
+.btn:active{transform:scale(.985);opacity:.9}
+.btn.yellow{background:var(--accent);color:#fff}
+.btn.outline{background:#fff;color:#111214;border:1.5px solid #dedee0}
+.btn.gray{background:#efeff0;color:#111214}
+.btn.danger{background:#fff;color:var(--bad);border:1.5px solid #e3c9c5}
+.btn:disabled{opacity:.35}
+.card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:16px;margin-top:12px;box-shadow:var(--shadow-sm)}
+.ctitle{display:flex;align-items:center;gap:10px;font-size:12px;font-weight:700;letter-spacing:.3px;text-transform:none}
+.ctitle .ico{width:28px;height:28px;border-radius:9px;background:#f1f1f2;color:#111214;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.ctitle .link{margin-left:auto;font-size:12px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--muted);cursor:pointer}
+label{font-size:11px;font-weight:600;color:var(--muted);display:block;margin:12px 0 5px;text-transform:none;letter-spacing:.2px}
+input,select{width:100%;padding:12px 13px;border:1.5px solid var(--border);border-radius:12px;font-size:16px;background:#fff;transition:border-color .15s ease}
+input:focus,select:focus{outline:none;border-color:#111}
+.chip{display:inline-block;padding:7px 13px;border-radius:18px;border:1.5px solid var(--border);margin:4px 4px 0 0;font-size:13px;font-weight:600;cursor:pointer;background:#fff}
+.chip.on{background:#111;color:#fff;border-color:#111}
+.row{display:flex;gap:10px}
+.row .btn{margin-top:10px}
+.muted{color:var(--muted);font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;padding:5px 10px;border-radius:8px;letter-spacing:.2px;text-transform:none}
+.pill.ok{background:#f0f0f1;color:#3f4147}
+.pill.bad{background:var(--badbg);color:var(--bad)}
+.pill.gray{background:#f0f0f1;color:var(--muted)}
+.pill.live{background:#e9e9eb;color:#3f4147}
+.pill.live::before{content:"";width:6px;height:6px;border-radius:50%;background:#111214;animation:pulse 1.8s ease-in-out infinite}
+/* ---------- sessions/home ---------- */
+.sess{border:1px solid var(--border);border-radius:14px;padding:14px;margin-top:10px;cursor:pointer;background:#fff;box-shadow:var(--shadow-sm);transition:transform .08s ease,box-shadow .15s ease}
+.sess:active{transform:scale(.99);box-shadow:var(--shadow-md)}
+.sess .t{font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sess .d{font-size:12px;color:var(--muted);margin-top:4px}
+/* ---------- camera ---------- */
+.camzone{position:relative;margin:-16px -16px 0;background:#0d0d0d;height:clamp(270px,38svh,360px);overflow:hidden}
+#reader{position:absolute;inset:0}
+#reader video{width:100%!important;height:100%!important;object-fit:cover!important}
+.scan-status{position:absolute;top:14px;left:14px;z-index:7;display:flex;align-items:center;gap:7px;padding:8px 11px;border-radius:999px;background:rgba(12,12,13,.68);backdrop-filter:blur(8px);color:#fff;font-size:12px;font-weight:650;pointer-events:none}
+.scan-status i{width:7px;height:7px;border-radius:50%;background:#34c759;box-shadow:0 0 0 3px rgba(52,199,89,.18)}
+.camtool{position:absolute;top:12px;right:12px;z-index:7;min-width:46px;height:42px;border:none;border-radius:12px;background:rgba(17,17,17,.82);color:#fff;font-size:18px;padding:0 12px;cursor:pointer;text-align:center;backdrop-filter:blur(8px)}
+.camtool .l{display:block;font-size:10px;font-weight:650;letter-spacing:.2px;color:#fff}
+.camtool.dice{right:66px;width:42px;min-width:42px;padding:0;font-size:20px}
+.camtool.dice .l{font-size:20px;line-height:1}
+#camMsg{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#cdced2;font-size:13px;text-align:center;padding:16px;gap:10px}
+#camMsg button{padding:9px 18px;border-radius:10px;border:none;background:#fff;color:#111214;font-weight:650;cursor:pointer}
+/* ---------- sheet ---------- */
+.sheet{position:relative;background:#fff;border-radius:22px 22px 0 0;margin:-22px -16px 0;padding:8px 16px 16px;z-index:8;box-shadow:0 -8px 24px rgba(16,17,20,.10)}
+.sheet-toggle{display:flex;align-items:center;justify-content:center;width:100%;height:34px;border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:11px;font-weight:800;letter-spacing:.7px}
+.sheet.collapsed{position:fixed;left:0;right:0;bottom:0;max-width:480px;margin:0 auto;padding:8px 16px calc(8px + env(safe-area-inset-bottom));z-index:45;border-radius:22px 22px 0 0}
+.sheet.collapsed .sheet-content{display:none}
+.screen.scan-focus .camzone{height:calc(100svh - 100px)}
+.bottombar.scan-focus-hidden{display:none!important}
+/* product panel */
+.ppanel{display:flex;gap:12px;align-items:flex-start}
+.ppanel .thumb{width:74px;height:74px;border:1px solid var(--border);border-radius:14px;background:#f4f4f5;display:flex;align-items:center;justify-content:center;font-size:38px;flex-shrink:0}
+.ppanel .nm{font-size:17px;font-weight:800;line-height:1.25}
+.ppanel .sku{font-size:12px;color:var(--muted);margin-top:3px}
+.pstats{display:flex;align-items:center;gap:14px;margin-top:8px}
+.pstats .col .l{font-size:11px;color:var(--muted)}
+.pstats .col .n{font-size:19px;font-weight:800;margin-top:1px}
+.pstats .sep{width:1px;height:30px;background:var(--border)}
+/* stepper */
+.stepper{display:flex;align-items:center;gap:8px;background:#f1f1f2;border-radius:14px;padding:8px;margin-top:12px}
+.stepper button{width:48px;height:46px;border-radius:12px;border:1.5px solid #dedee0;background:#fff;font-size:24px;font-weight:600;cursor:pointer}
+.stepper .num{flex:1;text-align:center;font-size:30px;font-weight:900}
+.stepper .num small{display:block;font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase}
+/* stats strip */
+.stats{display:flex;align-items:center;margin-top:12px}
+.stats .st{flex:1}
+.stats .st .n{font-size:20px;font-weight:800}
+.stats .st .l{font-size:11px;color:var(--muted);margin-top:1px}
+.stats .pct{text-align:right}
+.stats .pct .n{font-size:20px;font-weight:800}
+.pbar{height:7px;background:#e9e9eb;border-radius:5px;margin-top:12px;overflow:hidden}
+.pbar>div{height:100%;background:var(--accent);border-radius:5px;transition:width .3s}
+/* recent list */
+.ritem{display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--border);cursor:pointer}
+.ritem:last-child{border-bottom:none}
+.ritem .thumb{width:46px;height:46px;border:1px solid var(--border);border-radius:12px;background:#f4f4f5;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0}
+.ritem .info{flex:1;min-width:0}
+.ritem .nm{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ritem .cd{font-size:12px;color:var(--muted);margin-top:2px}
+.ritem .num{text-align:right;flex-shrink:0}
+.ritem .num .a{font-size:14px;font-weight:800}
+.ritem .num .b{font-size:11px;margin-top:2px}
+.ritem .tm{font-size:11px;color:var(--muted);width:38px;text-align:right;flex-shrink:0}
+/* team */
+.team{display:flex;gap:16px;margin-top:14px;overflow-x:auto}
+.mem{text-align:center;flex-shrink:0;width:64px}
+.mem .av{width:46px;height:46px;border-radius:50%;background:#111214;color:#fff;font-weight:700;font-size:15px;display:flex;align-items:center;justify-content:center;margin:0 auto;position:relative}
+.mem .av .st{position:absolute;bottom:0;right:0;width:13px;height:13px;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff}
+.mem .av .st.done{background:#111214}
+.mem .av .st.done::after{content:"✓"}
+.mem .av .st.pend{background:#d3d3d7}
+.mem .nm{font-size:11px;font-weight:600;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mem .ct{font-size:12px;font-weight:800;margin-top:1px}
+/* bottom bar */
+.bottombar{position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:rgba(255,255,255,.82);backdrop-filter:saturate(180%) blur(16px);-webkit-backdrop-filter:saturate(180%) blur(16px);border-top:1px solid var(--border);padding:10px 16px 14px;display:none;z-index:40;border-radius:18px 18px 0 0;box-shadow:var(--shadow-up)}
+.bottombar.show{display:block}
+.bottombar .row .btn{margin-top:0}
+/* modal */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(16,17,20,.42);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);z-index:50;align-items:flex-end;max-width:480px;margin:0 auto}
+.modal-bg.open{display:flex}
+.modal{background:#fff;width:100%;border-radius:24px 24px 0 0;padding:26px 22px calc(26px + env(safe-area-inset-bottom));animation:up .24s cubic-bezier(.22,1,.36,1);max-height:90vh;min-height:46vh;overflow-y:auto;box-shadow:0 -10px 40px rgba(16,17,20,.16)}
+@keyframes up{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
+.big-img{width:92px;height:92px;border-radius:20px;background:#f4f4f5;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:46px;margin:4px auto 0}
+.stat3{display:flex;gap:10px;margin-top:18px;text-align:center}
+.stat3>div{flex:1;background:#f1f1f2;border-radius:16px;padding:14px 10px}
+.stat3 .n{font-size:22px;font-weight:800}
+.stat3 .l{font-size:10.5px;color:var(--muted);text-transform:none;letter-spacing:.2px;margin-top:3px}
+.qtyrow{display:flex;gap:12px;align-items:center;margin-top:16px}
+.qtyrow button{width:46px;height:46px;border-radius:12px;border:1.5px solid #dedee0;background:#fff;font-size:22px;cursor:pointer}
+.qtyrow input{text-align:center;font-size:22px;font-weight:800;height:46px}
+/* table */
+table{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}
+th,td{padding:8px 6px;border-bottom:1px solid var(--border);text-align:left}
+th{color:var(--muted);font-weight:600;font-size:10.5px;text-transform:none;letter-spacing:.2px}
+td.r,th.r{text-align:right}
+.diff-neg{color:var(--bad);font-weight:800}.diff-pos{color:var(--blue);font-weight:800}.diff-zero{color:var(--ok);font-weight:700}
+.toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:rgba(16,17,20,.94);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#fff;padding:11px 18px;border-radius:12px;font-size:14px;font-weight:550;z-index:99;display:none;white-space:nowrap;box-shadow:var(--shadow-md)}
+.filterchips{margin-top:10px;white-space:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+/* ---- mobile fixes & bỏ icon ---- */
+.ctitle .ico{display:none}
+.row>div{min-width:0}
+input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;font-size:15px;min-width:0;text-align:left}
+#scr-count{padding-bottom:200px}
+.bottombar{padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+.ppanel .thumb,.ritem .thumb,.big-img,#pImg,#mImg{font-weight:700;color:#3f4147;letter-spacing:.5px;font-variant-numeric:tabular-nums}
+.ppanel .thumb,#pImg{font-size:20px}
+.ritem .thumb{font-size:15px}
+.big-img,#mImg{font-size:24px}
+</style>
+</head>
+<body>
+<div class="demo-banner">Kế toán Huyền Trang · Bản thử nghiệm, dữ liệu ảo</div>
+<header class="app">
+  <span class="back" id="btnBack" onclick="goBack()">‹</span>
+  <div class="hcenter">
+    <div class="t" id="hdrTitle">Kiểm Kê Kho</div>
+    <div class="s" id="hdrSub">Đăng nhập để bắt đầu</div>
+  </div>
+  <div class="hright" id="hdrUser"></div>
+</header>
+
+<!-- LOGIN -->
+<div class="screen active" id="scr-login">
+  <div class="card">
+    <div class="ctitle"><div class="ico">👤</div>Đăng nhập</div>
+    <label>Tài khoản</label>
+    <select id="loginUser"></select>
+    <label>Mật khẩu (demo: 1234)</label>
+    <input type="password" id="loginPass" value="1234">
+    <button class="btn yellow" onclick="doLogin()">Đăng nhập</button>
+  </div>
+  <p class="muted" style="margin-top:14px">Prototype mô phỏng trên 1 máy: đăng xuất và đăng nhập tài khoản khác để mô phỏng nhiều người cùng kiểm.</p>
+</div>
+
+<!-- HOME -->
+<div class="screen" id="scr-home">
+  <button class="btn yellow" id="btnNew" onclick="showCreate()">Tạo đợt kiểm kê mới</button>
+  <div class="card">
+    <div class="ctitle"><div class="ico">📦</div>Đợt kiểm kê đang mở</div>
+    <div id="activeList"></div>
+  </div>
+  <div class="card">
+    <div class="ctitle"><div class="ico">🕓</div>Lịch sử kiểm kê</div>
+    <div id="historyList"></div>
+  </div>
+</div>
+
+<!-- CREATE -->
+<div class="screen" id="scr-create">
+  <div class="card">
+    <div class="ctitle"><div class="ico">📝</div>Tạo đợt kiểm kê</div>
+    <div class="row">
+      <div style="flex:1"><label>Ngày kiểm kê</label><input type="date" id="cDate"></div>
+      <div style="flex:1"><label>Giờ kiểm kê</label><input type="time" id="cTime"></div>
+    </div>
+    <label>Kho sẽ kiểm kê</label>
+    <select id="cWh"></select>
+    <button class="btn outline" onclick="syncMisa()">Đồng bộ tồn kho từ Misa</button>
+    <p class="muted" id="syncInfo" style="margin-top:8px">Chưa đồng bộ. (Demo: tạo dữ liệu ảo thay cho API Misa)</p>
+    <div id="assignBox" style="display:none">
+      <label>Người cùng kiểm</label>
+      <p class="muted" style="margin:-2px 0 6px;font-size:12px">Mặc định chưa chọn ai. Chạm để thêm người cùng kiểm — <b>✓ = đã chọn</b>, ＋ = chưa chọn. Bạn (leader) luôn tham gia.</p>
+      <div id="assistChips"></div>
+      <p class="muted" id="assistCount" style="margin-top:8px;font-size:12px"></p>
+    </div>
+    <button class="btn yellow" id="btnCreate" onclick="createSession()" disabled>Tạo đợt kiểm kê</button>
+  </div>
+</div>
+
+<!-- COUNT -->
+<div class="screen" id="scr-count" style="padding-top:0">
+  <div class="camzone">
+    <div id="reader"></div>
+    <div class="scan-status"><i></i>Đưa mã vào khung</div>
+    <button class="camtool dice" type="button" onclick="demoScan()" aria-label="Quét thử dữ liệu demo" title="Quét thử"><span class="l">🎲</span></button>
+    <button class="camtool" id="btnTorch" type="button" onclick="toggleTorch()" style="display:none"><span class="l">Đèn</span></button>
+    <div id="camMsg" style="display:none"></div>
+  </div>
+
+  <div class="sheet" id="countSheet">
+    <button class="sheet-toggle" id="sheetToggle" type="button" onclick="toggleCountSheet()" aria-expanded="true">
+      ĐÓNG THÔNG TIN
+    </button>
+    <div class="sheet-content">
+
+    <!-- sản phẩm vừa quét -->
+    <div id="pEmpty" class="muted" style="text-align:center;padding:14px 0">Đưa camera vào mã vạch sản phẩm để bắt đầu đếm…</div>
+    <div id="pPanel" style="display:none">
+      <div class="ppanel">
+        <div class="thumb" id="pImg"></div>
+        <div style="flex:1;min-width:0">
+          <div class="nm" id="pName"></div>
+          <div class="sku" id="pSku"></div>
+          <div class="pstats">
+            <div class="col"><div class="l">SL trong Misa</div><div class="n" id="pMisa">0</div></div>
+            <div class="sep"></div>
+            <div class="col"><div class="l">Đã đếm</div><div class="n" id="pCounted">0</div></div>
+            <div class="col" style="margin-left:auto"><span class="pill ok" id="pPill">Khớp</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="muted" id="pOthers" style="margin-top:8px;display:none"></div>
+      <div class="stepper">
+        <button onclick="quickAdj(-1)">−</button>
+        <div class="num"><span id="pTotal">0</span><small>Tổng đã đếm</small></div>
+        <button onclick="quickAdj(1)">＋</button>
+      </div>
+      <button class="btn yellow" onclick="quickAdj(1)" style="margin-top:10px">+1 &amp; quét tiếp</button>
+    </div>
+
+    <label>Hoặc nhập mã (Enter = +1)</label>
+    <div class="row">
+      <input id="manualCode" placeholder="VD: NH001" style="text-transform:uppercase" onkeydown="if(event.key==='Enter')manualLookup()">
+      <button class="btn" style="width:80px;margin-top:0" onclick="manualLookup()">+1</button>
+    </div>
+    </div>
+  </div>
+
+  <!-- tiến độ -->
+  <div class="card">
+    <div class="ctitle"><div class="ico">📋</div>Tiến độ kiểm kê</div>
+    <div class="stats">
+      <div class="st"><div class="n" id="stDone">0</div><div class="l">Mã đã đếm</div></div>
+      <div class="st"><div class="n" id="stTotal">0</div><div class="l">Mã trong kho</div></div>
+      <div class="st"><div class="n" id="stMine">0</div><div class="l">SL tôi đã quét</div></div>
+      <div class="pct"><div class="n" id="stPct">0%</div><div class="l">Hoàn thành</div></div>
+    </div>
+    <div class="pbar"><div id="progFill" style="width:0%"></div></div>
+  </div>
+
+  <!-- quét gần nhất -->
+  <div class="card">
+    <div class="ctitle"><div class="ico">🕐</div>Quét gần nhất<span class="link" onclick="showDetail()">Xem tất cả ›</span></div>
+    <div id="countedList" style="margin-top:6px"></div>
+  </div>
+
+  <!-- nhóm -->
+  <div class="card">
+    <div class="ctitle"><div class="ico">👥</div>Nhóm kiểm kê (<span id="teamN">0</span>)</div>
+    <div class="team" id="teamList"></div>
+  </div>
+</div>
+
+<!-- DETAIL -->
+<div class="screen" id="scr-detail">
+  <div class="card">
+    <div class="ctitle"><div class="ico">🔍</div>Chi tiết – <span id="dtWhName"></span></div>
+    <input id="dtSearch" placeholder="Tìm theo mã hoặc tên sản phẩm…" style="margin-top:12px" oninput="renderDetail()">
+    <div class="filterchips" id="dtFilters">
+      <span class="chip on" data-f="all" onclick="setFilter(this)">Tất cả</span>
+      <span class="chip" data-f="counted" onclick="setFilter(this)">Đã đếm</span>
+      <span class="chip" data-f="uncounted" onclick="setFilter(this)">Chưa đếm</span>
+      <span class="chip" data-f="diff" onclick="setFilter(this)">Lệch Misa</span>
+    </div>
+    <p class="muted" id="dtCount" style="margin-top:10px"></p>
+    <div id="detailList"></div>
+  </div>
+</div>
+
+<!-- REPORT -->
+<div class="screen" id="scr-report">
+  <div class="card">
+    <div class="ctitle"><div class="ico">📊</div><span id="repTitle">Báo cáo</span></div>
+    <p class="muted" id="repMeta" style="margin-top:8px"></p>
+    <div id="repTable"></div>
+    <button class="btn yellow" onclick="exportExcel()">Xuất Excel so sánh với Misa</button>
+  </div>
+</div>
+
+<!-- bottom bar -->
+<div class="bottombar" id="bar">
+  <div class="row">
+    <button class="btn outline" onclick="goHome()">Tạm dừng</button>
+    <button class="btn" id="btnDone" onclick="markDone()">Hoàn thành</button>
+  </div>
+  <button class="btn danger" id="btnFinish" style="display:none;margin-top:10px" onclick="finishAll()">Kết thúc kiểm kho</button>
+</div>
+
+<!-- product modal -->
+<div class="modal-bg" id="modalBg" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="big-img" id="mImg"></div>
+    <div style="text-align:center;margin-top:10px">
+      <div style="font-weight:800;font-size:17px" id="mName"></div>
+      <div class="muted" id="mCode"></div>
+      <div class="muted" id="mDesc" style="margin-top:4px"></div>
+    </div>
+    <div class="stat3">
+      <div><div class="n" id="mStock">0</div><div class="l">Tồn Misa</div></div>
+      <div><div class="n" id="mCounted">0</div><div class="l">Đã đếm (cả nhóm)</div></div>
+    </div>
+    <div class="muted" id="mByUser" style="text-align:center;margin-top:8px"></div>
+    <label style="text-align:center">Số lượng điều chỉnh</label>
+    <div class="qtyrow">
+      <button onclick="bump(-1)">−</button>
+      <input type="number" id="mQty" value="1" min="1">
+      <button onclick="bump(1)">＋</button>
+    </div>
+    <div class="row">
+      <button class="btn gray" onclick="saveModalCount(-1)">Trừ bớt</button>
+      <button class="btn" style="margin-top:10px" onclick="saveModalCount(1)">Cộng vào</button>
+    </div>
+    <div id="mLeaderBox" style="display:none">
+      <label style="text-align:center">Leader: đặt lại tổng chính xác</label>
+      <div class="row">
+        <input type="number" id="mSetTotal" min="0" placeholder="Tổng đúng">
+        <button class="btn danger" style="width:140px;margin-top:0" onclick="setExactTotal()">Đặt tổng</button>
+      </div>
+    </div>
+    <div class="muted" id="mLog" style="margin-top:12px;font-size:11px"></div>
+    <button class="btn gray" onclick="closeModal()">Đóng</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= MOCK DATA (thay cho API MISA AMIS) ================= */
+/* Phân quyền: cfo (Giám đốc tài chính) > chief (Kế toán trưởng) > staff (NV Kế toán) */
+const USERS=[
+  {id:'trung',name:'Anh Trung',title:'Giám đốc tài chính',role:'cfo'},
+  {id:'trang',name:'Trang',title:'Kế toán trưởng',role:'chief'},
+  {id:'quyen',name:'Quyên',title:'NV Kế toán',role:'staff'},
+  {id:'kt2',name:'NV Kế toán 2',title:'NV Kế toán',role:'staff'},
+  {id:'kt3',name:'NV Kế toán 3',title:'NV Kế toán',role:'staff'},
+];
+function canLead(u){return u.role==='cfo'||u.role==='chief';}
+const WAREHOUSES=[{id:'KHO-SR',name:'Kho Showroom Q1'},{id:'KHO-TONG',name:'Kho Tổng Thủ Đức'},{id:'KHO-ONL',name:'Kho Online'}];
+const PRODUCTS=[
+ {code:'NH001',name:'Nồi chiên không dầu 5.5L',desc:'Màu đen, 1700W, màn cảm ứng',unit:'Cái',img:'🍳'},
+ {code:'NH002',name:'Bộ nồi inox 3 đáy 5 món',desc:'Inox 304, dùng bếp từ',unit:'Bộ',img:'🥘'},
+ {code:'NH003',name:'Máy xay sinh tố 2L',desc:'Cối thủy tinh, 800W',unit:'Cái',img:'🥤'},
+ {code:'NH004',name:'Bình giữ nhiệt 500ml',desc:'Inox 316, giữ nóng 12h',unit:'Cái',img:'🫙'},
+ {code:'NH005',name:'Chảo chống dính 28cm',desc:'Đá granite, đáy từ',unit:'Cái',img:'🍲'},
+ {code:'NH006',name:'Máy lọc không khí mini',desc:'HEPA H13, phòng 20m²',unit:'Cái',img:'🌬️'},
+ {code:'NH007',name:'Bộ dao thớt 7 món',desc:'Thép không gỉ, kèm hộp đựng',unit:'Bộ',img:'🔪'},
+ {code:'NH008',name:'Nồi cơm điện tử 1.8L',desc:'Lòng niêu, 12 chế độ',unit:'Cái',img:'🍚'},
+ {code:'NH009',name:'Quạt tích điện xếp gọn',desc:'Pin 7200mAh, 4 mức gió',unit:'Cái',img:'🌀'},
+ {code:'NH010',name:'Bàn ủi hơi nước cầm tay',desc:'1300W, chống nhỏ giọt',unit:'Cái',img:'👔'},
+ {code:'NH011',name:'Kệ gia vị 2 tầng',desc:'Thép sơn tĩnh điện',unit:'Cái',img:'🧂'},
+ {code:'NH012',name:'Hộp cơm giữ nhiệt 3 ngăn',desc:'Kèm túi + muỗng đũa',unit:'Cái',img:'🍱'},
+];
+function fakeMisaSnapshot(){const s={};PRODUCTS.forEach(p=>s[p.code]=Math.floor(Math.random()*40)+3);return s;}
+
+/* SESSIONS: counts:{code:{total, byUser:{uid:qty}, lastAt}} ; misa = snapshot lúc đồng bộ ; log = audit trail */
+let SESSIONS=[];
+(function seed(){
+  [['2026-06-30','17:00','KHO-SR'],['2026-05-31','17:30','KHO-TONG']].forEach(([d,t,w],i)=>{
+    const misa=fakeMisaSnapshot(),counts={};
+    PRODUCTS.forEach(p=>{const real=Math.max(0,misa[p.code]+(Math.random()<0.25?(Math.random()<0.5?-1:1)*Math.ceil(Math.random()*3):0));counts[p.code]={total:real,byUser:{quyen:real}};});
+    SESSIONS.push({id:'S'+(i+1),date:d,time:t,whId:w,team:['trang','quyen','kt2'],leader:'trang',misa,counts,done:{trang:1,quyen:1,kt2:1},status:'finished'});
+  });
+})();
+
+/* ================= STATE ================= */
+let currentUser=null, session=null, camOn=false, camStarting=false, scanner=null, modalProd=null, pendingMisa=null, viewSession=null, torchOn=false;
+let lastDecode={code:null,at:0},lastProdCode=null;
+
+/* ================= HELPERS ================= */
+const $=id=>document.getElementById(id);
+function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$(id).classList.add('active');
+  $('bar').classList.toggle('show',id==='scr-count');
+  $('btnBack').style.display=(id==='scr-login'||id==='scr-home')?'none':'inline';}
+function toast(m){const t=$('toast');t.textContent=m;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',1500);}
+function prodByCode(c){return PRODUCTS.find(p=>p.code===String(c).toUpperCase().trim());}
+function skuNum(code){const m=String(code).match(/\d+/);return m?m[0]:code;} /* thumbnail monochrome: số cuối mã SKU */
+function whName(id){return WAREHOUSES.find(w=>w.id===id).name;}
+function uName(id){return USERS.find(u=>u.id===id).name;}
+function initials(n){return n.split(' ').map(x=>x[0]).join('').slice(-2).toUpperCase();}
+function fmtT(ms){return new Date(ms).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'});}
+function setHdr(t,s){$('hdrTitle').innerHTML=t;$('hdrSub').textContent=s||'';}
+function goBack(){
+  if($('scr-detail').classList.contains('active')&&session){enterCountView();return;}
+  goHome();
+}
+function beep(freq){
+  try{
+    const ctx=beep._ctx||(beep._ctx=new (window.AudioContext||window.webkitAudioContext)());
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.frequency.value=freq||1200;o.connect(g);g.connect(ctx.destination);
+    g.gain.setValueAtTime(.15,ctx.currentTime);g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.12);
+    o.start();o.stop(ctx.currentTime+.12);
+  }catch(e){}
+}
+
+/* ================= LOGIN / HOME ================= */
+USERS.forEach(u=>{const o=document.createElement('option');o.value=u.id;o.textContent=u.name+' – '+u.title;$('loginUser').appendChild(o);});
+function doLogin(){
+  if($('loginPass').value!=='1234'){toast('Sai mật khẩu (demo: 1234)');return;}
+  currentUser=USERS.find(u=>u.id===$('loginUser').value);
+  $('hdrUser').innerHTML=currentUser.name+'<br><span class="out" onclick="logout()">Đăng xuất</span>';
+  goHome();
+}
+function logout(){stopCam();currentUser=null;session=null;$('hdrUser').innerHTML='';setHdr('Kiểm Kê Kho','Đăng nhập để bắt đầu');show('scr-login');}
+function goHome(){
+  stopCam();session=null;show('scr-home');
+  setHdr('Kiểm Kê Kho',currentUser.title);
+  $('btnNew').style.display=canLead(currentUser)?'block':'none';
+  const act=$('activeList');act.innerHTML='';
+  const actives=SESSIONS.filter(s=>s.status==='active');
+  if(!actives.length)act.innerHTML='<p class="muted" style="margin-top:10px">Chưa có đợt kiểm kê nào đang mở.</p>';
+  actives.forEach(s=>{
+    const inTeam=s.team.includes(currentUser.id);
+    const d=document.createElement('div');d.className='sess';
+    d.innerHTML=`<div class="t">${whName(s.whId)} <span class="pill live">Đang kiểm</span></div>
+      <div class="d">${s.date} · ${s.time} · Leader: ${uName(s.leader)}</div>
+      <div class="d">Nhóm: ${s.team.map(uName).join(', ')}</div>
+      <div class="d" style="color:${inTeam?'var(--text)':'var(--bad)'};font-weight:600">${inTeam?'Chạm để vào kiểm cùng':'Bạn không thuộc nhóm kiểm này'}</div>`;
+    if(inTeam)d.onclick=()=>joinSession(s);
+    act.appendChild(d);
+  });
+  const his=$('historyList');his.innerHTML='';
+  const fins=SESSIONS.filter(s=>s.status==='finished').sort((a,b)=>b.date.localeCompare(a.date));
+  if(!fins.length)his.innerHTML='<p class="muted" style="margin-top:10px">Chưa có lịch sử.</p>';
+  fins.forEach(s=>{
+    const diffs=PRODUCTS.filter(p=>((s.counts[p.code]?s.counts[p.code].total:0)-s.misa[p.code])!==0).length;
+    const d=document.createElement('div');d.className='sess';
+    d.innerHTML=`<div class="t">${whName(s.whId)} <span class="pill ok">Đã xong</span></div>
+      <div class="d">${s.date} · ${s.time} · Leader: ${uName(s.leader)}</div>
+      <div class="d">${diffs?(diffs+' mã có chênh lệch'):'Khớp hoàn toàn với Misa'} · Chạm xem báo cáo</div>`;
+    d.onclick=()=>{viewSession=s;reportScreen();};
+    his.appendChild(d);
+  });
+}
+
+/* ================= CREATE (leader) ================= */
+function showCreate(){
+  show('scr-create');setHdr('Tạo đợt kiểm kê',currentUser.name+' – '+currentUser.title);
+  const now=new Date();
+  $('cDate').value=now.toISOString().slice(0,10);
+  $('cTime').value=now.toTimeString().slice(0,5);
+  $('cWh').innerHTML='';WAREHOUSES.forEach(w=>{const o=document.createElement('option');o.value=w.id;o.textContent=w.name;$('cWh').appendChild(o);});
+  pendingMisa=null;$('assignBox').style.display='none';$('btnCreate').disabled=true;
+  $('syncInfo').textContent='Chưa đồng bộ. (Demo: tạo dữ liệu ảo thay cho API Misa)';
+}
+function syncMisa(){
+  pendingMisa=fakeMisaSnapshot();
+  $('syncInfo').textContent='Đã lấy tồn kho '+whName($('cWh').value)+' từ Misa lúc '+new Date().toLocaleTimeString('vi-VN')+' ('+PRODUCTS.length+' mã SP)';
+  const box=$('assistChips');box.innerHTML='';
+  USERS.filter(u=>u.id!==currentUser.id).forEach(u=>{
+    const c=document.createElement('span');c.className='chip';c.dataset.uid=u.id;
+    const paint=()=>{c.innerHTML=(c.classList.contains('on')?'✓ ':'＋ ')+u.name;};
+    paint();
+    c.onclick=()=>{c.classList.toggle('on');paint();updateAssistCount();};
+    box.appendChild(c);
+  });
+  updateAssistCount();
+  $('assignBox').style.display='block';$('btnCreate').disabled=false;
+  toast('Đồng bộ Misa thành công (dữ liệu ảo)');
+}
+function updateAssistCount(){
+  const n=document.querySelectorAll('#assistChips .chip.on').length;
+  $('assistCount').innerHTML='Nhóm sẽ có <b>'+(n+1)+' người</b> (bạn + '+n+' người cùng kiểm).';
+}
+function createSession(){
+  const team=[currentUser.id,...[...document.querySelectorAll('#assistChips .chip.on')].map(c=>c.dataset.uid)];
+  const s={id:'S'+Date.now(),date:$('cDate').value,time:$('cTime').value,whId:$('cWh').value,
+    team,leader:currentUser.id,misa:pendingMisa,counts:{},done:{},status:'active',log:[]};
+  SESSIONS.push(s);toast('Đã tạo đợt kiểm kê');joinSession(s);
+}
+
+/* ================= COUNT ================= */
+function joinSession(s){session=s;lastProdCode=null;enterCountView();}
+function setCountSheet(collapsed){
+  $('countSheet').classList.toggle('collapsed',collapsed);
+  $('scr-count').classList.toggle('scan-focus',collapsed);
+  $('bar').classList.toggle('scan-focus-hidden',collapsed);
+  $('sheetToggle').setAttribute('aria-expanded',String(!collapsed));
+  $('sheetToggle').textContent=collapsed?'MỞ THÔNG TIN':'ĐÓNG THÔNG TIN';
+}
+function toggleCountSheet(){setCountSheet(!$('countSheet').classList.contains('collapsed'));}
+function enterCountView(){
+  setCountSheet(false);
+  show('scr-count');
+  setHdr(whName(session.whId)+' <span class="dot">●</span>','Phiên: '+session.date+' · '+session.time+' · Leader: '+uName(session.leader));
+  $('btnFinish').style.display=currentUser.id===session.leader?'block':'none';
+  renderCount();
+  if(!session.done[currentUser.id])startCam();
+}
+function renderCount(){
+  const codes=Object.keys(session.counts);
+  $('stDone').textContent=codes.length;
+  $('stTotal').textContent=PRODUCTS.length;
+  let mine=0;codes.forEach(c=>{mine+=session.counts[c].byUser[currentUser.id]||0;});
+  $('stMine').textContent=mine;
+  const pct=Math.round(codes.length/PRODUCTS.length*100);
+  $('stPct').textContent=pct+'%';
+  $('progFill').style.width=pct+'%';
+  renderProductPanel();
+  /* quét gần nhất (3) */
+  const list=$('countedList');list.innerHTML='';
+  if(!codes.length)list.innerHTML='<p class="muted" style="padding:8px 0">Chưa có sản phẩm nào được đếm.</p>';
+  codes.slice().sort((a,b)=>(session.counts[b].lastAt||0)-(session.counts[a].lastAt||0)).slice(0,3).forEach(c=>{
+    const p=prodByCode(c),cnt=session.counts[c],misa=session.misa[c],diff=cnt.total-misa;
+    const st=diff===0?'<span class="diff-zero">Khớp</span>':(diff<0?`<span class="diff-neg">${diff}</span>`:`<span class="diff-pos">+${diff}</span>`);
+    const d=document.createElement('div');d.className='ritem';
+    d.innerHTML=`<div class="thumb">${skuNum(p.code)}</div>
+      <div class="info"><div class="nm">${p.name}</div><div class="cd">${p.code}</div></div>
+      <div class="num"><div class="a">${cnt.total} / ${misa}</div><div class="b">${st}</div></div>
+      <div class="tm">${cnt.lastAt?fmtT(cnt.lastAt):''}</div>`;
+    d.onclick=()=>openModal(p);
+    list.appendChild(d);
+  });
+  /* nhóm */
+  $('teamN').textContent=session.team.length;
+  const tl=$('teamList');tl.innerHTML='';
+  session.team.forEach(uid=>{
+    const u=USERS.find(x=>x.id===uid);
+    let cnt=0;codes.forEach(c=>{cnt+=session.counts[c].byUser[uid]||0;});
+    tl.innerHTML+=`<div class="mem">
+      <div class="av">${initials(u.name)}${uid===session.leader?'<span style="position:absolute;top:-6px;right:-6px;font-size:8px;font-weight:700;background:#111214;color:#fff;border:1.5px solid #fff;border-radius:5px;padding:1px 3px;line-height:1">L</span>':''}<span class="st ${session.done[uid]?'done':'pend'}"></span></div>
+      <div class="nm">${uid===currentUser.id?'Bạn':u.name}</div><div class="ct">${cnt}</div></div>`;
+  });
+  /* nút */
+  const meDone=!!session.done[currentUser.id];
+  $('btnDone').classList.toggle('outline',meDone);
+  $('btnDone').classList.toggle('gray',false);
+  $('btnDone').textContent=meDone?'Tiếp tục kiểm':'Hoàn thành';
+  if(currentUser.id===session.leader){
+    /* Leader/Kế toán trưởng luôn được kết thúc – kể cả khi NV chưa hoàn thành (sẽ có cảnh báo xác nhận) */
+    const notDone=session.team.filter(u=>!session.done[u]);
+    $('btnFinish').disabled=false;
+    $('btnFinish').textContent=notDone.length
+      ?('Kết thúc (còn '+notDone.length+' người chưa xong)')
+      :'Kết thúc kiểm kho';
+  }
+}
+/* panel sản phẩm vừa quét */
+function renderProductPanel(){
+  if(!lastProdCode){$('pEmpty').style.display='block';$('pPanel').style.display='none';return;}
+  $('pEmpty').style.display='none';$('pPanel').style.display='block';
+  const p=prodByCode(lastProdCode),c=session.counts[p.code],total=c?c.total:0,misa=session.misa[p.code];
+  $('pImg').textContent=skuNum(p.code);$('pName').textContent=p.name;
+  $('pSku').textContent='SKU: '+p.code+' · ĐVT: '+p.unit;
+  $('pMisa').textContent=misa;$('pCounted').textContent=total;$('pTotal').textContent=total;
+  const pill=$('pPill');
+  if(total===misa){pill.className='pill ok';pill.textContent='Khớp';}
+  else if(total>misa){pill.className='pill bad';pill.textContent='Vượt +'+(total-misa);}
+  else{pill.className='pill gray';pill.textContent='Còn '+(misa-total);}
+  const others=c?Object.entries(c.byUser).filter(([u,q])=>u!==currentUser.id&&q>0):[];
+  if(others.length){$('pOthers').style.display='block';$('pOthers').innerHTML='Người khác đã đếm: '+others.map(([u,q])=>uName(u)+': '+q).join(' · ');}
+  else $('pOthers').style.display='none';
+}
+/* log điều chỉnh: ai – làm gì – lúc nào */
+function logAdj(code,delta,type){
+  if(!session.log)session.log=[];
+  session.log.push({code,delta,type,uid:currentUser.id,at:new Date()});
+}
+/* cộng dồn – dùng chung cho quét, nhập tay, modal */
+function addCount(code,qty){
+  if(session.done[currentUser.id]){toast('Bạn đã bấm Hoàn thành.');return false;}
+  if(session.status!=='active'){toast('Đợt kiểm kê đã kết thúc.');return false;}
+  const p=prodByCode(code);
+  if(!p){toast('Không tìm thấy mã "'+code+'"');return false;}
+  if(!session.counts[p.code])session.counts[p.code]={total:0,byUser:{}};
+  const c=session.counts[p.code];
+  c.total+=qty;c.byUser[currentUser.id]=(c.byUser[currentUser.id]||0)+qty;c.lastAt=Date.now();
+  logAdj(p.code,qty,'đếm');
+  lastProdCode=p.code;
+  renderCount();
+  if($('scr-detail').classList.contains('active'))renderDetail();
+  const over=c.total>session.misa[p.code];
+  beep(over?350:1200); /* tiếng trầm = vượt tồn */
+  if(navigator.vibrate)navigator.vibrate(over?[80,60,80]:60);
+  if(over)toast('Vượt tồn Misa – kiểm tra quét trùng!');else toast('+'+qty+' · '+p.code);
+  return true;
+}
+/* chỉnh nhanh SP đang hiển thị */
+function quickAdj(d){
+  if(!lastProdCode)return;
+  if(session.done[currentUser.id]){toast('Bạn đã bấm Hoàn thành.');return;}
+  if(session.status!=='active'){toast('Đợt kiểm kê đã kết thúc.');return;}
+  if(d>0){addCount(lastProdCode,1);return;}
+  const c=session.counts[lastProdCode];
+  if(!c||c.total<=0){toast('Không thể giảm thêm');return;}
+  c.total-=1;c.byUser[currentUser.id]=(c.byUser[currentUser.id]||0)-1;c.lastAt=Date.now();
+  logAdj(lastProdCode,-1,'trừ nhanh');
+  renderCount();toast('−1 · '+lastProdCode);
+  if(navigator.vibrate)navigator.vibrate(30);
+}
+/* Camera quét liên tục: ưu tiên camera sau, chống đọc trùng 2 giây. */
+function camMsg(html){const m=$('camMsg');if(!html){m.style.display='none';return;}m.style.display='flex';m.innerHTML=html;}
+function canUseCamera(){
+  return window.isSecureContext || location.hostname==='localhost' || location.hostname==='127.0.0.1';
+}
+function cameraErrorMessage(err){
+  const name=err&&err.name;
+  if(!canUseCamera())return 'Camera chỉ hoạt động khi mở bằng HTTPS.<br>Hãy dùng đường link https://… thay vì mở trực tiếp file HTML.';
+  if(name==='NotAllowedError'||name==='PermissionDeniedError')return 'Bạn chưa cấp quyền Camera.<br>Vào cài đặt trình duyệt, cho phép Camera rồi thử lại.';
+  if(name==='NotFoundError'||name==='OverconstrainedError')return 'Không tìm thấy camera sau trên thiết bị này.<br>Bạn có thể thử lại để dùng camera khả dụng.';
+  return 'Không thể mở camera. Hãy đóng ứng dụng khác đang dùng camera và thử lại.';
+}
+function handleDecoded(code){
+  const now=Date.now();
+  if(code===lastDecode.code&&now-lastDecode.at<2000)return;
+  lastDecode={code,at:now};
+  addCount(code,1);
+}
+function setTorchButton(){
+  const btn=$('btnTorch');
+  const video=document.querySelector('#reader video');
+  const track=video&&video.srcObject&&video.srcObject.getVideoTracks()[0];
+  const capabilities=track&&track.getCapabilities&&track.getCapabilities();
+  btn.style.display=capabilities&&capabilities.torch?'block':'none';
+  torchOn=false;btn.querySelector('.l').textContent='Đèn';
+}
+function toggleTorch(){
+  const video=document.querySelector('#reader video');
+  const track=video&&video.srcObject&&video.srcObject.getVideoTracks()[0];
+  if(!track)return;
+  torchOn=!torchOn;
+  track.applyConstraints({advanced:[{torch:torchOn}]}).then(()=>{$('btnTorch').querySelector('.l').textContent=torchOn?'Tắt đèn':'Đèn';})
+    .catch(()=>{torchOn=false;toast('Thiết bị không hỗ trợ đèn pin');});
+}
+function startCam(){
+  if(camOn||camStarting)return;
+  if(!canUseCamera()){
+    camMsg(cameraErrorMessage()+ '<button type="button" onclick="startCam()">Thử lại</button>');
+    return;
+  }
+  camStarting=true;
+  camMsg('Đang mở camera sau…');
+  if(scanner){try{scanner.clear();}catch(e){}}
+  scanner=new Html5Qrcode('reader');
+  const config={fps:12,qrbox:{width:280,height:140},disableFlip:false};
+  /* html5-qrcode nhận giá trị "environment" để chọn camera sau. */
+  scanner.start({facingMode:'environment'},config,handleDecoded,()=>{})
+    .then(()=>{camOn=true;camStarting=false;camMsg(null);setTorchButton();})
+    .catch(err=>{
+      camOn=false;camStarting=false;
+      camMsg(cameraErrorMessage(err)+'<button type="button" onclick="startCam()">Thử lại</button>');
+    });
+}
+function stopCam(){
+  camStarting=false;
+  torchOn=false;$('btnTorch').style.display='none';
+  const activeScanner=scanner;
+  scanner=null;camOn=false;
+  if(activeScanner){activeScanner.stop().catch(()=>{}).finally(()=>{try{activeScanner.clear();}catch(e){}});}
+}
+function demoScan(){const p=PRODUCTS[Math.floor(Math.random()*PRODUCTS.length)];addCount(p.code,1);}
+function manualLookup(){const v=$('manualCode').value;if(!v.trim())return;if(addCount(v,1))$('manualCode').value='';}
+
+/* ===== DETAIL ===== */
+let dtFilter='all';
+function showDetail(){stopCam();show('scr-detail');setHdr(whName(session.whId),'Chi tiết kiểm kê');$('dtWhName').textContent=whName(session.whId);$('dtSearch').value='';renderDetail();}
+function setFilter(el){
+  document.querySelectorAll('#dtFilters .chip').forEach(c=>c.classList.remove('on'));
+  el.classList.add('on');dtFilter=el.dataset.f;renderDetail();
+}
+function renderDetail(){
+  const q=$('dtSearch').value.toLowerCase().trim();
+  let rows=PRODUCTS.map(p=>{
+    const cnt=session.counts[p.code];
+    return {p,counted:cnt?cnt.total:0,has:!!cnt,misa:session.misa[p.code],lastAt:cnt?cnt.lastAt||0:0};
+  });
+  if(dtFilter==='counted')rows=rows.filter(r=>r.has);
+  if(dtFilter==='uncounted')rows=rows.filter(r=>!r.has);
+  if(dtFilter==='diff')rows=rows.filter(r=>r.counted!==r.misa);
+  if(q)rows=rows.filter(r=>r.p.code.toLowerCase().includes(q)||r.p.name.toLowerCase().includes(q));
+  rows.sort((a,b)=>b.lastAt-a.lastAt||a.p.code.localeCompare(b.p.code));
+  $('dtCount').textContent=rows.length+' sản phẩm · chạm để xem / điều chỉnh';
+  const list=$('detailList');list.innerHTML='';
+  if(!rows.length){list.innerHTML='<p class="muted" style="margin-top:8px">Không có sản phẩm phù hợp.</p>';return;}
+  rows.forEach(r=>{
+    const diff=r.counted-r.misa;
+    const st=r.has?(diff===0?'<span class="diff-zero">Khớp</span>':(diff<0?`<span class="diff-neg">${diff}</span>`:`<span class="diff-pos">+${diff}</span>`)):'<span class="pill gray" style="padding:3px 9px">chưa đếm</span>';
+    const d=document.createElement('div');d.className='ritem';
+    d.innerHTML=`<div class="thumb">${skuNum(r.p.code)}</div>
+      <div class="info"><div class="nm">${r.p.name}</div><div class="cd">${r.p.code} · Tồn Misa: ${r.misa}</div></div>
+      <div class="num"><div class="a">${r.counted} / ${r.misa}</div><div class="b">${st}</div></div>`;
+    d.onclick=()=>openModal(r.p);
+    list.appendChild(d);
+  });
+}
+
+/* ===== MODAL ===== */
+function openModal(p){
+  modalProd=p;
+  $('mImg').textContent=skuNum(p.code);$('mName').textContent=p.name;
+  $('mCode').textContent='SKU: '+p.code+' · ĐVT: '+p.unit;$('mDesc').textContent=p.desc;
+  $('mStock').textContent=session.misa[p.code];
+  refreshModalStats();
+  $('mLeaderBox').style.display=canLead(currentUser)?'block':'none';
+  $('mQty').value=1;$('mSetTotal').value='';
+  $('modalBg').classList.add('open');
+}
+function closeModal(){$('modalBg').classList.remove('open');modalProd=null;}
+function bump(d){const i=$('mQty');i.value=Math.max(1,(parseInt(i.value)||1)+d);}
+function refreshModalStats(){
+  const cnt=session.counts[modalProd.code];
+  $('mCounted').textContent=cnt?cnt.total:0;
+  $('mByUser').textContent=cnt?Object.entries(cnt.byUser).map(([u,q])=>uName(u)+': '+q).join(' · '):'Chưa ai đếm mã này';
+  const logs=(session.log||[]).filter(l=>l.code===modalProd.code).slice(-3).reverse();
+  $('mLog').innerHTML=logs.length?('Lịch sử gần nhất:<br>'+logs.map(l=>l.at.toLocaleTimeString('vi-VN')+' – '+uName(l.uid)+': '+(l.delta>0?'+':'')+l.delta+' ('+l.type+')').join('<br>')):'';
+}
+function saveModalCount(dir){
+  if(session.status!=='active'){toast('Đợt kiểm kê đã kết thúc.');return;}
+  if(session.done[currentUser.id]){toast('Bạn đã bấm Hoàn thành.');return;}
+  const q=parseInt($('mQty').value)||0;
+  if(q<=0){toast('Nhập số lượng > 0');return;}
+  if(dir>0){addCount(modalProd.code,q);refreshModalStats();$('mQty').value=1;return;}
+  const c=session.counts[modalProd.code];
+  const cur=c?c.total:0;
+  if(q>cur){toast('Chỉ có thể trừ tối đa '+cur);return;}
+  c.total-=q;c.byUser[currentUser.id]=(c.byUser[currentUser.id]||0)-q;c.lastAt=Date.now();
+  logAdj(modalProd.code,-q,'trừ bớt');
+  renderCount();if($('scr-detail').classList.contains('active'))renderDetail();
+  refreshModalStats();$('mQty').value=1;toast('−'+q+' · '+modalProd.code);
+}
+function setExactTotal(){
+  if(session.status!=='active'){toast('Đợt kiểm kê đã kết thúc.');return;}
+  if(!canLead(currentUser)){toast('Chỉ Leader được đặt tổng.');return;}
+  const v=parseInt($('mSetTotal').value);
+  if(isNaN(v)||v<0){toast('Nhập tổng hợp lệ');return;}
+  if(!session.counts[modalProd.code])session.counts[modalProd.code]={total:0,byUser:{}};
+  const c=session.counts[modalProd.code],delta=v-c.total;
+  if(delta===0){toast('Tổng không đổi');return;}
+  if(!confirm('Đặt tổng '+modalProd.code+' từ '+c.total+' → '+v+' ?'))return;
+  c.total=v;c.byUser[currentUser.id]=(c.byUser[currentUser.id]||0)+delta;c.lastAt=Date.now();
+  logAdj(modalProd.code,delta,'leader đặt tổng');
+  renderCount();if($('scr-detail').classList.contains('active'))renderDetail();
+  refreshModalStats();$('mSetTotal').value='';toast('Đã đặt tổng = '+v);
+}
+
+/* ===== DONE / FINISH ===== */
+function markDone(){
+  if(session.done[currentUser.id]){
+    if(!confirm('Tiếp tục kiểm kê? Trạng thái HOÀN THÀNH của bạn sẽ được gỡ.'))return;
+    delete session.done[currentUser.id];renderCount();startCam();toast('Đã mở lại – tiếp tục quét');return;
+  }
+  const missing=PRODUCTS.filter(p=>!session.counts[p.code]).length;
+  const msg=missing
+    ?('Còn '+missing+' mã CHƯA ĐƯỢC ĐẾM (xem "Xem tất cả › Chưa đếm").\n\nVẫn xác nhận hoàn thành phần của bạn?')
+    :'Xác nhận bạn đã kiểm xong phần của mình?';
+  if(!confirm(msg))return;
+  session.done[currentUser.id]=true;stopCam();
+  camMsg('Bạn đã hoàn thành.<br>Bấm "Tiếp tục kiểm" nếu muốn quét thêm.');
+  renderCount();
+}
+function finishAll(){
+  const notDone=session.team.filter(u=>!session.done[u]);
+  const missing=PRODUCTS.filter(p=>!session.counts[p.code]).length;
+  /* Cảnh báo TRƯỚC: nếu còn nhân viên chưa hoàn thiện kiểm kê thì nêu rõ tên */
+  let msg='';
+  if(notDone.length){
+    msg+='Còn '+notDone.length+' thành viên CHƯA bấm Hoàn thành:\n• '
+        +notDone.map(u=>uName(u)+(u===session.leader?' (bạn)':'')).join('\n• ')
+        +'\n\nBạn là Kế toán trưởng – vẫn có quyền kết thúc mà không cần chờ họ.\n\n';
+  }
+  if(missing){
+    msg+='Còn '+missing+' mã CHƯA ĐƯỢC ĐẾM – sẽ tính Thực đếm = 0 khi so với Misa.\n\n';
+  }
+  msg+='Xác nhận kết thúc đợt kiểm kho?';
+  if(!confirm(msg))return;
+  if(!confirm('XÁC NHẬN LẦN CUỐI: Sau khi kết thúc, đợt kiểm kê sẽ KHÓA – không ai chỉnh sửa hay đếm thêm được nữa.'))return;
+  session.status='finished';stopCam();viewSession=session;session=null;reportScreen();
+}
+
+/* ===== REPORT / EXCEL ===== */
+function reportScreen(){
+  show('scr-report');
+  const s=viewSession;
+  setHdr(whName(s.whId),'Báo cáo kiểm kê · '+s.date);
+  $('repTitle').textContent=whName(s.whId);
+  $('repMeta').textContent=s.date+' · '+s.time+' · Leader: '+uName(s.leader)+' · Nhóm: '+s.team.map(uName).join(', ');
+  renderReport();
+}
+function reportRows(){
+  const s=viewSession;
+  return PRODUCTS.map(p=>{
+    const misa=s.misa[p.code],counted=s.counts[p.code]?s.counts[p.code].total:0;
+    return {code:p.code,name:p.name,misa,counted,diff:counted-misa};
+  });
+}
+function renderReport(){
+  let h='<table><tr><th>Mã</th><th>Sản phẩm</th><th class="r">Misa</th><th class="r">Thực đếm</th><th class="r">Chênh</th></tr>';
+  reportRows().forEach(r=>{
+    const d=r.diff===0?'<span class="diff-zero">0</span>':(r.diff<0?`<span class="diff-neg">${r.diff}</span>`:`<span class="diff-pos">+${r.diff}</span>`);
+    h+=`<tr><td>${r.code}</td><td>${r.name}</td><td class="r">${r.misa}</td><td class="r">${r.counted}</td><td class="r">${d}</td></tr>`;
+  });
+  $('repTable').innerHTML=h+'</table>';
+}
+function exportExcel(){
+  const s=viewSession,wh=whName(s.whId);
+  const rows=reportRows().map(r=>({
+    'Mã SP':r.code,'Tên sản phẩm':r.name,'Kho':wh,'Ngày kiểm':s.date,'Giờ':s.time,
+    'Tồn Misa':r.misa,'Thực đếm':r.counted,'Chênh lệch':r.diff,
+    'Ghi chú':r.diff===0?'Khớp':(r.diff<0?'Thiếu hàng':'Thừa hàng')
+  }));
+  const ws=XLSX.utils.json_to_sheet(rows);
+  ws['!cols']=[{wch:8},{wch:32},{wch:20},{wch:11},{wch:7},{wch:9},{wch:9},{wch:10},{wch:12}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'KiemKe');
+  XLSX.writeFile(wb,`KiemKe_${s.whId}_${s.date}.xlsx`);
+}
+</script>
+</body>
+</html>
